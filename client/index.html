@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Dashboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css" rel="stylesheet" />
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const STATUS_COLORS = {
+  working: 'bg-green-500',
+  idle: 'bg-yellow-400',
+  awaiting_permission: 'bg-orange-400',
+  stopped: 'bg-gray-500',
+};
+
+function relativeTime(unixTs) {
+  const diff = Math.floor(Date.now() / 1000) - unixTs;
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
+}
+
+function SessionCard({ session }) {
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => forceUpdate(n => n + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const ctxColor = session.context_pct >= 80 ? 'bg-red-500' : 'bg-blue-500';
+  const badgeColor = STATUS_COLORS[session.status] || 'bg-gray-500';
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-2 shadow-lg">
+      <div className="flex items-center justify-between">
+        <span className="font-bold text-lg truncate">{session.project_name}</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full text-gray-900 font-semibold ${badgeColor}`}>
+          {session.status}
+        </span>
+      </div>
+      <div className="text-xs text-gray-400 font-mono truncate">
+        {session.git_branch} · {session.machine_hostname}
+      </div>
+      {session.git_repo && (
+        <a href={session.git_repo} className="text-xs text-blue-400 truncate hover:underline" target="_blank" rel="noreferrer">
+          {session.git_repo}
+        </a>
+      )}
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-gray-400">Context</span>
+        <div className="flex-1 bg-gray-700 rounded-full h-2">
+          <div className={`h-2 rounded-full ${ctxColor}`} style={{ width: `${session.context_pct}%` }} />
+        </div>
+        <span className="text-gray-300 w-8 text-right">{session.context_pct}%</span>
+      </div>
+      <div className="text-xs text-gray-500 text-right">{relativeTime(session.last_heartbeat)}</div>
+    </div>
+  );
+}
+
+function App() {
+  const [token, setToken] = useState(() => sessionStorage.getItem('token') || '');
+  const [tokenInput, setTokenInput] = useState('');
+  const [sessions, setSessions] = useState(null);
+  const [wsStatus, setWsStatus] = useState('disconnected');
+  const wsRef = useRef(null);
+
+  useEffect(() => {
+    if (!token) return;
+    sessionStorage.setItem('token', token);
+
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/ws?token=${token}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => setWsStatus('connected');
+    ws.onmessage = e => setSessions(JSON.parse(e.data));
+    ws.onclose = () => { setWsStatus('disconnected'); setSessions(prev => prev); };
+    ws.onerror = () => setWsStatus('error');
+
+    return () => ws.close();
+  }, [token]);
+
+  // Also fetch initial sessions via HTTP
+  useEffect(() => {
+    if (!token) return;
+    fetch('/api/sessions', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(setSessions)
+      .catch(() => {});
+  }, [token]);
+
+  if (!token) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="bg-gray-800 rounded-xl p-8 flex flex-col gap-4 w-80">
+          <h1 className="text-xl font-bold">Agent Dashboard</h1>
+          <input
+            className="bg-gray-700 rounded px-3 py-2 text-sm"
+            type="password"
+            placeholder="Enter token"
+            value={tokenInput}
+            onChange={e => setTokenInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && setToken(tokenInput)}
+          />
+          <button
+            className="bg-blue-600 hover:bg-blue-500 rounded px-4 py-2 text-sm font-semibold"
+            onClick={() => setToken(tokenInput)}
+          >Connect</button>
+        </div>
+      </div>
+    );
+  }
+
+  const grouped = {};
+  (sessions || []).forEach(s => {
+    if (!grouped[s.machine_hostname]) grouped[s.machine_hostname] = [];
+    grouped[s.machine_hostname].push(s);
+  });
+
+  const machines = Object.keys(grouped);
+
+  const wsIndicator = {
+    connected: 'bg-green-500',
+    disconnected: 'bg-gray-500',
+    error: 'bg-red-500',
+  }[wsStatus];
+
+  return (
+    <div className="max-w-5xl mx-auto p-4">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Agent Dashboard</h1>
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <span className={`w-2 h-2 rounded-full ${wsIndicator}`} />
+          {wsStatus} · {machines.length} machine{machines.length !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      {sessions === null && (
+        <div className="text-center text-gray-400 mt-20">Connecting…</div>
+      )}
+
+      {sessions !== null && sessions.length === 0 && (
+        <div className="text-center text-gray-400 mt-20">No active sessions</div>
+      )}
+
+      {machines.map(hostname => (
+        <div key={hostname} className="mb-8">
+          <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">{hostname}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {grouped[hostname]
+              .sort((a, b) => (a.status === 'stopped' ? 1 : 0) - (b.status === 'stopped' ? 1 : 0))
+              .map(s => <SessionCard key={s.session_id} session={s} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
