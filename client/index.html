@@ -198,7 +198,7 @@
       cursor: pointer;
       width: 100%;
     }
-    .login-btn:hover { background: #2ea043; }
+    .login-btn:hover { background: var(--c-working-fg); }
 
     /* ── Mobile: sidebar becomes top strip ── */
     @media (max-width: 767px) {
@@ -235,14 +235,15 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect } = React;
 
 /* ── Helpers ── */
 function relativeTime(unixTs) {
   const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixTs); // guard against clock skew
-  if (diff < 60)   return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 60)    return `${diff}s ago`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 const STATUS_ORDER = { working: 0, awaiting_permission: 1, idle: 2, stopped: 3 };
@@ -254,20 +255,20 @@ const STATUS_META = {
   stopped:             { pill: 'pill-stopped',  card: 'card-stopped',  label: '— stopped',            bar: '#6e7681' },
 };
 
+const WS_DOT_COLOR = {
+  connected:    '#3fb950',
+  disconnected: '#6e7681',
+  error:        '#da3633',
+};
+
 function barColor(status, pct) {
   if (pct >= 80) return '#da3633';
   return (STATUS_META[status] || STATUS_META.stopped).bar;
 }
 
 /* ── SessionCard ── */
-function SessionCard({ session }) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    if (session.status === 'stopped') return; // stopped cards have static timestamps
-    const t = setInterval(() => tick(n => n + 1), 30000);
-    return () => clearInterval(t);
-  }, [session.status]);
-
+function SessionCard({ session, tick }) {
+  const pct = Math.min(100, Math.max(0, session.context_pct));
   const meta = STATUS_META[session.status] || STATUS_META.stopped;
 
   return (
@@ -285,9 +286,9 @@ function SessionCard({ session }) {
       <div className="ctx-row">
         <span className="ctx-label">ctx</span>
         <div className="ctx-bar">
-          <div className="ctx-fill" style={{ width: `${session.context_pct}%`, background: barColor(session.status, session.context_pct) }} />
+          <div className="ctx-fill" style={{ width: `${pct}%`, background: barColor(session.status, pct) }} />
         </div>
-        <span className="ctx-pct">{session.context_pct}%</span>
+        <span className="ctx-pct">{pct}%</span>
       </div>
       <div className="card-footer">{relativeTime(session.last_heartbeat)}</div>
     </div>
@@ -347,7 +348,13 @@ function App() {
   const [sessions,   setSessions]   = useState(null);
   const [wsStatus,   setWsStatus]   = useState('disconnected');
   const [selected,   setSelected]   = useState('all');
-  const wsRef = useRef(null);
+  const [tick, setTick] = useState(0);
+
+  /* Tick timer for timestamp refreshes */
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   /* WebSocket */
   useEffect(() => {
@@ -355,7 +362,6 @@ function App() {
     sessionStorage.setItem('token', token);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws?token=${token}`);
-    wsRef.current = ws;
     ws.onopen    = () => setWsStatus('connected');
     ws.onmessage = e  => { try { setSessions(JSON.parse(e.data)); } catch (_) {} };
     ws.onclose   = () => setWsStatus('disconnected');
@@ -406,7 +412,7 @@ function App() {
     .filter(s => selected === 'all' || s.machine_hostname === selected)
     .sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
 
-  const wsDot = { connected: '#3fb950', disconnected: '#6e7681', error: '#da3633' }[wsStatus] || '#6e7681';
+  const wsDot = WS_DOT_COLOR[wsStatus] || '#6e7681';
 
   const mainTitle = selected === 'all' ? 'All machines' : selected;
   const activeCount = visible.filter(s => s.status !== 'stopped').length;
@@ -439,7 +445,7 @@ function App() {
           {sessions !== null && visible.length === 0 && <div className="empty-state">No sessions</div>}
 
           <div className="cards-grid">
-            {visible.map(s => <SessionCard key={s.session_id} session={s} />)}
+            {visible.map(s => <SessionCard key={s.session_id} session={s} tick={tick} />)}
           </div>
         </div>
       </div>
