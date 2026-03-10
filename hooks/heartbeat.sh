@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code notification hook — sends heartbeat to Agent Dashboard
 # Required env vars: DASHBOARD_URL, DASHBOARD_TOKEN
-# Optional env vars: HEARTBEAT_INTERVAL (seconds, default 120)
+# Optional env vars: HEARTBEAT_INTERVAL (seconds, default 30)
 #                    HEARTBEAT_MAX_IDLE  (seconds, default 600)
 
 set -euo pipefail
@@ -64,7 +64,7 @@ send_heartbeat
 # It stops itself after HEARTBEAT_MAX_IDLE seconds of no new notifications,
 # allowing the server's stale sweep to mark the session stopped naturally.
 
-INTERVAL="${HEARTBEAT_INTERVAL:-120}"   # re-send interval (default 2 min)
+INTERVAL="${HEARTBEAT_INTERVAL:-30}"    # re-send interval (default 30s)
 MAX_IDLE="${HEARTBEAT_MAX_IDLE:-600}"   # stop daemon after 10 min of silence
 
 STATEFILE="/tmp/claude-hb-${SESSION_ID}.env"
