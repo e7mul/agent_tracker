@@ -17,7 +17,8 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-const db = createDb(path.join(__dirname, '../data.db'));
+const dbDir = process.env.DB_DIR || path.join(__dirname, '..');
+const db = createDb(path.join(dbDir, 'data.db'));
 const app = express();
 const server = http.createServer(app);
 
