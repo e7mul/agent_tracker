@@ -8,161 +8,442 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css" rel="stylesheet" />
+  <style>
+    /* GitHub Dark palette tokens */
+    :root {
+      --bg-canvas:   #0d1117;
+      --bg-subtle:   #161b22;
+      --bg-inset:    #1c2128;
+      --bg-overlay:  #21262d;
+      --border:      #30363d;
+      --border-muted:#21262d;
+      --text-primary:#e6edf3;
+      --text-muted:  #8b949e;
+      --text-subtle: #6e7681;
+      --accent-blue: #58a6ff;
+
+      /* Status colours */
+      --c-working-bg:  #0d1f0e;
+      --c-working-bd:  #238636;
+      --c-working-fg:  #3fb950;
+
+      --c-awaiting-bg: #1f1a0d;
+      --c-awaiting-bd: #9e6a03;
+      --c-awaiting-fg: #d29922;
+
+      --c-idle-bg:     #111d2d;
+      --c-idle-bd:     #1f6feb;
+      --c-idle-fg:     #58a6ff;
+
+      --c-stopped-bg:  #161b22;
+      --c-stopped-bd:  #30363d;
+      --c-stopped-fg:  #6e7681;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      height: 48px;
+      background: var(--bg-subtle);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .topbar-title { font-size: 14px; font-weight: 700; color: var(--accent-blue); letter-spacing: 0.5px; }
+    .topbar-sep   { color: var(--border); }
+    .ws-dot       { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    .ws-label     { color: var(--text-muted); font-size: 11px; }
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .session-count {
+      background: var(--bg-overlay);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── App body ── */
+    .app-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 220px;
+      background: var(--bg-subtle);
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow-y: auto;
+      padding: 12px 0;
+    }
+    .sidebar-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 0 12px 8px;
+    }
+    .sidebar-divider { height: 1px; background: var(--border-muted); margin: 6px 12px; }
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      user-select: none;
+    }
+    .sidebar-item:hover { background: var(--bg-inset); }
+    .sidebar-item.active {
+      background: var(--bg-inset);
+      border-left-color: var(--accent-blue);
+    }
+    .machine-icon {
+      width: 28px; height: 28px;
+      background: var(--bg-overlay);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .machine-info { flex: 1; min-width: 0; }
+    .machine-name { font-size: 12px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .machine-meta { font-size: 10px; color: var(--text-subtle); margin-top: 1px; }
+    .machine-badge {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 7px; border-radius: 10px; flex-shrink: 0;
+    }
+    .badge-active { background: var(--c-working-bg); color: var(--c-working-fg); border: 1px solid var(--c-working-bd); }
+    .badge-idle   { background: var(--bg-overlay);   color: var(--text-subtle);  border: 1px solid var(--border); }
+
+    /* ── Main ── */
+    .main { flex: 1; overflow-y: auto; padding: 20px; }
+    .main-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+    .main-title  { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    .main-sub    { font-size: 11px; color: var(--text-subtle); }
+
+    /* ── Cards grid ── */
+    .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+
+    /* ── Session card ── */
+    .session-card { border-radius: 8px; padding: 14px; border: 1px solid; }
+    .card-working  { background: var(--c-working-bg);  border-color: var(--c-working-bd); }
+    .card-awaiting { background: var(--c-awaiting-bg); border-color: var(--c-awaiting-bd); }
+    .card-idle     { background: var(--c-idle-bg);     border-color: var(--c-idle-bd); }
+    .card-stopped  { background: var(--c-stopped-bg);  border-color: var(--c-stopped-bd); opacity: 0.45; }
+
+    .card-top     { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .card-project { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .status-pill  { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 12px; white-space: nowrap; flex-shrink: 0; }
+    .pill-working  { background: var(--c-working-bd);  color: #fff; }
+    .pill-awaiting { background: var(--c-awaiting-bd); color: #fff; }
+    .pill-idle     { background: var(--c-idle-bd);     color: #fff; }
+    .pill-stopped  { background: var(--bg-overlay);    color: var(--text-subtle); }
+
+    .card-meta  { font-size: 10px; color: var(--text-muted); font-family: monospace; margin-bottom: 8px; }
+    .card-repo  { font-size: 10px; color: var(--accent-blue); margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .card-repo:hover { text-decoration: underline; }
+
+    .ctx-row   { display: flex; align-items: center; gap: 8px; }
+    .ctx-label { font-size: 10px; color: var(--text-subtle); width: 24px; }
+    .ctx-bar   { flex: 1; background: var(--bg-overlay); border-radius: 2px; height: 3px; }
+    .ctx-fill  { height: 3px; border-radius: 2px; }
+    .ctx-pct   { font-size: 10px; color: var(--text-muted); width: 28px; text-align: right; }
+
+    .card-footer { font-size: 10px; color: var(--text-subtle); text-align: right; margin-top: 8px; }
+
+    /* ── Empty states ── */
+    .empty-state { text-align: center; color: var(--text-subtle); margin-top: 80px; font-size: 13px; }
+
+    /* ── Login ── */
+    .login-wrap { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--bg-canvas); }
+    .login-card { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 12px; padding: 32px; width: 320px; display: flex; flex-direction: column; gap: 16px; }
+    .login-title { font-size: 18px; font-weight: 700; color: var(--accent-blue); }
+    .login-input {
+      background: var(--bg-canvas);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+      width: 100%;
+    }
+    .login-input:focus { border-color: var(--accent-blue); }
+    .login-btn {
+      background: var(--c-working-bd);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+    }
+    .login-btn:hover { background: #2ea043; }
+
+    /* ── Mobile: sidebar becomes top strip ── */
+    @media (max-width: 767px) {
+      .app-body { flex-direction: column; }
+      .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px 12px;
+        gap: 8px;
+        align-items: center;
+      }
+      .sidebar-label { display: none; }
+      .sidebar-divider { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
+      .sidebar-item {
+        border-left: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 6px;
+        padding: 6px 10px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .sidebar-item.active { border-bottom-color: var(--accent-blue); border-left-color: transparent; }
+      .machine-info { display: none; }
+      .machine-icon { width: 22px; height: 22px; font-size: 12px; }
+      .machine-badge { display: none; }
+    }
+  </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body>
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
-const STATUS_COLORS = {
-  working: 'bg-green-500',
-  idle: 'bg-yellow-400',
-  awaiting_permission: 'bg-orange-400',
-  stopped: 'bg-gray-500',
-};
-
+/* ── Helpers ── */
 function relativeTime(unixTs) {
-  const diff = Math.floor(Date.now() / 1000) - unixTs;
-  if (diff < 60) return `${diff}s ago`;
+  const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixTs); // guard against clock skew
+  if (diff < 60)   return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   return `${Math.floor(diff / 3600)}h ago`;
 }
 
-function SessionCard({ session }) {
-  const [, forceUpdate] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => forceUpdate(n => n + 1), 30000);
-    return () => clearInterval(t);
-  }, []);
+const STATUS_ORDER = { working: 0, awaiting_permission: 1, idle: 2, stopped: 3 };
 
-  const ctxColor = session.context_pct >= 80 ? 'bg-red-500' : 'bg-blue-500';
-  const badgeColor = STATUS_COLORS[session.status] || 'bg-gray-500';
+const STATUS_META = {
+  working:             { pill: 'pill-working',  card: 'card-working',  label: '● working',           bar: '#3fb950' },
+  awaiting_permission: { pill: 'pill-awaiting', card: 'card-awaiting', label: '⚠ awaiting permission', bar: '#d29922' },
+  idle:                { pill: 'pill-idle',     card: 'card-idle',     label: '○ idle',               bar: '#58a6ff' },
+  stopped:             { pill: 'pill-stopped',  card: 'card-stopped',  label: '— stopped',            bar: '#6e7681' },
+};
+
+function barColor(status, pct) {
+  if (pct >= 80) return '#da3633';
+  return (STATUS_META[status] || STATUS_META.stopped).bar;
+}
+
+/* ── SessionCard ── */
+function SessionCard({ session }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (session.status === 'stopped') return; // stopped cards have static timestamps
+    const t = setInterval(() => tick(n => n + 1), 30000);
+    return () => clearInterval(t);
+  }, [session.status]);
+
+  const meta = STATUS_META[session.status] || STATUS_META.stopped;
 
   return (
-    <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-2 shadow-lg">
-      <div className="flex items-center justify-between">
-        <span className="font-bold text-lg truncate">{session.project_name}</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full text-gray-900 font-semibold ${badgeColor}`}>
-          {session.status}
-        </span>
+    <div className={`session-card ${meta.card}`}>
+      <div className="card-top">
+        <span className="card-project">{session.project_name}</span>
+        <span className={`status-pill ${meta.pill}`}>{meta.label}</span>
       </div>
-      <div className="text-xs text-gray-400 font-mono truncate">
-        {session.git_branch} · {session.machine_hostname}
-      </div>
+      <div className="card-meta">{session.git_branch} · {session.machine_hostname}</div>
       {session.git_repo && (
-        <a href={session.git_repo} className="text-xs text-blue-400 truncate hover:underline" target="_blank" rel="noreferrer">
-          {session.git_repo}
+        <a href={session.git_repo} className="card-repo" target="_blank" rel="noreferrer">
+          {session.git_repo.replace(/^https?:\/\//, '')}
         </a>
       )}
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-gray-400">Context</span>
-        <div className="flex-1 bg-gray-700 rounded-full h-2">
-          <div className={`h-2 rounded-full ${ctxColor}`} style={{ width: `${session.context_pct}%` }} />
+      <div className="ctx-row">
+        <span className="ctx-label">ctx</span>
+        <div className="ctx-bar">
+          <div className="ctx-fill" style={{ width: `${session.context_pct}%`, background: barColor(session.status, session.context_pct) }} />
         </div>
-        <span className="text-gray-300 w-8 text-right">{session.context_pct}%</span>
+        <span className="ctx-pct">{session.context_pct}%</span>
       </div>
-      <div className="text-xs text-gray-500 text-right">{relativeTime(session.last_heartbeat)}</div>
+      <div className="card-footer">{relativeTime(session.last_heartbeat)}</div>
     </div>
   );
 }
 
+/* ── Sidebar ── */
+function Sidebar({ machines, selected, onSelect, sessions }) {
+  const hasActive = hostname => sessions.some(s => hostname === 'all'
+    ? s.status !== 'stopped'
+    : s.machine_hostname === hostname && s.status !== 'stopped'
+  );
+
+  return (
+    <div className="sidebar">
+      <div className="sidebar-label">Machines</div>
+
+      <div
+        className={`sidebar-item${selected === 'all' ? ' active' : ''}`}
+        onClick={() => onSelect('all')}
+      >
+        <div className="machine-icon">⊞</div>
+        <div className="machine-info">
+          <div className="machine-name">All machines</div>
+          <div className="machine-meta">{sessions.length} sessions</div>
+        </div>
+      </div>
+
+      <div className="sidebar-divider" />
+
+      {machines.map(hostname => {
+        const count = sessions.filter(s => s.machine_hostname === hostname).length;
+        const active = hasActive(hostname);
+        return (
+          <div
+            key={hostname}
+            className={`sidebar-item${selected === hostname ? ' active' : ''}`}
+            onClick={() => onSelect(hostname)}
+          >
+            <div className="machine-icon">💻</div>
+            <div className="machine-info">
+              <div className="machine-name">{hostname}</div>
+              <div className="machine-meta">{count} session{count !== 1 ? 's' : ''}</div>
+            </div>
+            <span className={`machine-badge ${active ? 'badge-active' : 'badge-idle'}`}>{count}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── App ── */
 function App() {
-  const [token, setToken] = useState(() => sessionStorage.getItem('token') || '');
+  const [token,      setToken]      = useState(() => sessionStorage.getItem('token') || '');
   const [tokenInput, setTokenInput] = useState('');
-  const [sessions, setSessions] = useState(null);
-  const [wsStatus, setWsStatus] = useState('disconnected');
+  const [sessions,   setSessions]   = useState(null);
+  const [wsStatus,   setWsStatus]   = useState('disconnected');
+  const [selected,   setSelected]   = useState('all');
   const wsRef = useRef(null);
 
+  /* WebSocket */
   useEffect(() => {
     if (!token) return;
     sessionStorage.setItem('token', token);
-
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws?token=${token}`);
     wsRef.current = ws;
-
-    ws.onopen = () => setWsStatus('connected');
-    ws.onmessage = e => setSessions(JSON.parse(e.data));
-    ws.onclose = () => { setWsStatus('disconnected'); setSessions(prev => prev); };
-    ws.onerror = () => setWsStatus('error');
-
+    ws.onopen    = () => setWsStatus('connected');
+    ws.onmessage = e  => { try { setSessions(JSON.parse(e.data)); } catch (_) {} };
+    ws.onclose   = () => setWsStatus('disconnected');
+    ws.onerror   = () => setWsStatus('error');
     return () => ws.close();
   }, [token]);
 
-  // Also fetch initial sessions via HTTP
+  /* Initial HTTP fetch — clears bad token on 401 */
   useEffect(() => {
     if (!token) return;
     fetch('/api/sessions', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(setSessions)
+      .then(r => {
+        if (r.status === 401) { sessionStorage.removeItem('token'); setToken(''); return null; }
+        return r.json();
+      })
+      .then(data => { if (data) setSessions(data); })
       .catch(() => {});
   }, [token]);
 
+  /* ── Login ── */
   if (!token) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="bg-gray-800 rounded-xl p-8 flex flex-col gap-4 w-80">
-          <h1 className="text-xl font-bold">Agent Dashboard</h1>
+      <div className="login-wrap">
+        <div className="login-card">
+          <div className="login-title">⬡ Agent Dashboard</div>
           <input
-            className="bg-gray-700 rounded px-3 py-2 text-sm"
+            className="login-input"
             type="password"
             placeholder="Enter token"
             value={tokenInput}
             onChange={e => setTokenInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && setToken(tokenInput)}
+            autoFocus
           />
-          <button
-            className="bg-blue-600 hover:bg-blue-500 rounded px-4 py-2 text-sm font-semibold"
-            onClick={() => setToken(tokenInput)}
-          >Connect</button>
+          <button className="login-btn" onClick={() => setToken(tokenInput)}>Connect</button>
         </div>
       </div>
     );
   }
 
-  const grouped = {};
-  (sessions || []).forEach(s => {
-    if (!grouped[s.machine_hostname]) grouped[s.machine_hostname] = [];
-    grouped[s.machine_hostname].push(s);
-  });
+  const allSessions = sessions || [];
 
-  const machines = Object.keys(grouped);
+  /* Derive machine list — stable alphabetical order to prevent sidebar reordering on WS updates */
+  const machines = [...new Set(allSessions.map(s => s.machine_hostname))].sort();
 
-  const wsIndicator = {
-    connected: 'bg-green-500',
-    disconnected: 'bg-gray-500',
-    error: 'bg-red-500',
-  }[wsStatus];
+  /* Filter + sort */
+  const visible = allSessions
+    .filter(s => selected === 'all' || s.machine_hostname === selected)
+    .sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
+
+  const wsDot = { connected: '#3fb950', disconnected: '#6e7681', error: '#da3633' }[wsStatus] || '#6e7681';
+
+  const mainTitle = selected === 'all' ? 'All machines' : selected;
+  const activeCount = visible.filter(s => s.status !== 'stopped').length;
 
   return (
-    <div className="max-w-5xl mx-auto p-4">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Agent Dashboard</h1>
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <span className={`w-2 h-2 rounded-full ${wsIndicator}`} />
-          {wsStatus} · {machines.length} machine{machines.length !== 1 ? 's' : ''}
+    <>
+      {/* Top bar */}
+      <div className="topbar">
+        <span className="topbar-title">⬡ Agent Dashboard</span>
+        <span className="topbar-sep">|</span>
+        <span>
+          <span className="ws-dot" style={{ background: wsDot }} />
+          <span className="ws-label">{wsStatus}</span>
+        </span>
+        <div className="topbar-right">
+          <span className="session-count">{allSessions.length} session{allSessions.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
 
-      {sessions === null && (
-        <div className="text-center text-gray-400 mt-20">Connecting…</div>
-      )}
+      <div className="app-body">
+        <Sidebar machines={machines} selected={selected} onSelect={setSelected} sessions={allSessions} />
 
-      {sessions !== null && sessions.length === 0 && (
-        <div className="text-center text-gray-400 mt-20">No active sessions</div>
-      )}
+        <div className="main">
+          <div className="main-header">
+            <span className="main-title">{mainTitle}</span>
+            <span className="main-sub">{activeCount} active</span>
+          </div>
 
-      {machines.map(hostname => (
-        <div key={hostname} className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">{hostname}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {grouped[hostname]
-              .sort((a, b) => (a.status === 'stopped' ? 1 : 0) - (b.status === 'stopped' ? 1 : 0))
-              .map(s => <SessionCard key={s.session_id} session={s} />)}
+          {sessions === null && <div className="empty-state">Connecting…</div>}
+          {sessions !== null && visible.length === 0 && <div className="empty-state">No sessions</div>}
+
+          <div className="cards-grid">
+            {visible.map(s => <SessionCard key={s.session_id} session={s} />)}
           </div>
         </div>
-      ))}
-    </div>
+      </div>
+    </>
   );
 }
 
