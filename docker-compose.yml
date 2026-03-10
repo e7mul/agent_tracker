@@ -1,0 +1,15 @@
+services:
+  dashboard:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DASHBOARD_TOKEN=${DASHBOARD_TOKEN}
+      - SESSION_TTL_MINUTES=${SESSION_TTL_MINUTES:-5}
+      - DB_DIR=/data
+    volumes:
+      - dashboard_data:/data
+    restart: unless-stopped
+
+volumes:
+  dashboard_data:
