@@ -267,7 +267,7 @@ const { useState, useEffect, useRef } = React;
 
 /* ── Helpers ── */
 function relativeTime(unixTs) {
-  const diff = Math.floor(Date.now() / 1000) - unixTs;
+  const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixTs); // guard against clock skew
   if (diff < 60)   return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   return `${Math.floor(diff / 3600)}h ago`;
@@ -291,9 +291,10 @@ function barColor(status, pct) {
 function SessionCard({ session }) {
   const [, tick] = useState(0);
   useEffect(() => {
+    if (session.status === 'stopped') return; // stopped cards have static timestamps
     const t = setInterval(() => tick(n => n + 1), 30000);
     return () => clearInterval(t);
-  }, []);
+  }, [session.status]);
 
   const meta = STATUS_META[session.status] || STATUS_META.stopped;
 
@@ -384,18 +385,21 @@ function App() {
     const ws = new WebSocket(`${proto}://${location.host}/ws?token=${token}`);
     wsRef.current = ws;
     ws.onopen    = () => setWsStatus('connected');
-    ws.onmessage = e  => setSessions(JSON.parse(e.data));
+    ws.onmessage = e  => { try { setSessions(JSON.parse(e.data)); } catch (_) {} };
     ws.onclose   = () => setWsStatus('disconnected');
     ws.onerror   = () => setWsStatus('error');
     return () => ws.close();
   }, [token]);
 
-  /* Initial HTTP fetch */
+  /* Initial HTTP fetch — clears bad token on 401 */
   useEffect(() => {
     if (!token) return;
     fetch('/api/sessions', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(setSessions)
+      .then(r => {
+        if (r.status === 401) { sessionStorage.removeItem('token'); setToken(''); return null; }
+        return r.json();
+      })
+      .then(data => { if (data) setSessions(data); })
       .catch(() => {});
   }, [token]);
 
@@ -422,8 +426,8 @@ function App() {
 
   const allSessions = sessions || [];
 
-  /* Derive machine list (stable order: first-seen) */
-  const machines = [...new Set(allSessions.map(s => s.machine_hostname))];
+  /* Derive machine list — stable alphabetical order to prevent sidebar reordering on WS updates */
+  const machines = [...new Set(allSessions.map(s => s.machine_hostname))].sort();
 
   /* Filter + sort */
   const visible = allSessions
