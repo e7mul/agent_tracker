@@ -7,7 +7,6 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css" rel="stylesheet" />
   <style>
     /* GitHub Dark palette tokens */
     :root {
@@ -240,7 +239,7 @@ const { useState, useEffect } = React;
 /* ── Helpers ── */
 function relativeTime(unixTs) {
   const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixTs); // guard against clock skew
-  if (diff < 60)    return `${diff}s ago`;
+  if (diff < 60)    return diff === 0 ? 'just now' : `${diff}s ago`;
   if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
@@ -267,7 +266,7 @@ function barColor(status, pct) {
 }
 
 /* ── SessionCard ── */
-function SessionCard({ session, tick }) {
+function SessionCard({ session, tick }) { // tick changes every 30s → React re-renders → relativeTime refreshes
   const pct = Math.min(100, Math.max(0, session.context_pct));
   const meta = STATUS_META[session.status] || STATUS_META.stopped;
 
@@ -315,6 +314,7 @@ function Sidebar({ machines, selected, onSelect, sessions }) {
           <div className="machine-name">All machines</div>
           <div className="machine-meta">{sessions.length} sessions</div>
         </div>
+        <span className={`machine-badge ${hasActive('all') ? 'badge-active' : 'badge-idle'}`}>{sessions.length}</span>
       </div>
 
       <div className="sidebar-divider" />
